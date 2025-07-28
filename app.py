@@ -3,7 +3,7 @@ from PyPDF2 import PdfReader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 import os
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
-from langchain_community.vectorstores import FAISS
+from langchain.vectorstores import FAISS
 from langchain.prompts import PromptTemplate
 from dotenv import load_dotenv
 import io
@@ -38,68 +38,125 @@ def get_vector_store(text_chunks):
     return vector_store
 
 
-def summarize_with_rag(text_chunks, summary_type="comprehensive"):
+def summarize_with_rag(text_chunks, summary_type="comprehensive", specific_topic=None):
     # Create vector store from chunks
-    st.info("🔍 Creating vector embeddings...")
+    st.info(" Creating vector embeddings...")
     embeddings = OpenAIEmbeddings()
     vector_store = FAISS.from_texts(text_chunks, embedding=embeddings)
     
     # Define different summary prompts with RAG context
-    prompt_templates = {
-        "comprehensive": """
-            Based on the following relevant context from the document, provide a comprehensive summary. 
-            Include all main points, key findings, important details, and conclusions found in the context.
-            Make it detailed but well-organized:
+    if specific_topic:
+        # Topic-specific prompts
+        prompt_templates = {
+            "comprehensive": f"""
+                Based on the following relevant context from the document, provide a comprehensive summary specifically about: "{specific_topic}".
+                Focus on all information related to this topic, including main points, key findings, important details, and conclusions.
+                If the topic is not covered in the context, clearly state that the topic was not found in the document.
+                
+                Context: {{context}}
+                
+                Comprehensive Summary about "{specific_topic}":
+            """,
             
-            Context: {context}
+            "brief": f"""
+                Based on the following relevant context from the document, provide a brief summary specifically about: "{specific_topic}".
+                Focus only on the most important points related to this topic in 2-3 paragraphs.
+                If the topic is not covered in the context, clearly state that the topic was not found.
+                
+                Context: {{context}}
+                
+                Brief Summary about "{specific_topic}":
+            """,
             
-            Comprehensive Summary:
-        """,
+            "bullet_points": f"""
+                Based on the following relevant context from the document, create a bullet point summary specifically about: "{specific_topic}".
+                Extract only the main ideas related to this topic and present them as clear, concise bullet points.
+                If the topic is not covered in the context, clearly state that the topic was not found.
+                
+                Context: {{context}}
+                
+                Key Points about "{specific_topic}":
+            """,
+            
+            "executive": f"""
+                Based on the following relevant context from the document, provide an executive summary specifically about: "{specific_topic}".
+                Focus on key insights, conclusions, and actionable information related to this topic that would be relevant for decision-making.
+                If the topic is not covered in the context, clearly state that the topic was not found.
+                
+                Context: {{context}}
+                
+                Executive Summary about "{specific_topic}":
+            """
+        }
         
-        "brief": """
-            Based on the following relevant context from the document, provide a brief summary. 
-            Focus only on the most important points and key takeaways in 2-3 paragraphs:
+        # Use the specific topic as the main search query
+        summary_queries = [
+            specific_topic,
+            f"{specific_topic} details",
+            f"{specific_topic} findings",
+            f"{specific_topic} information"
+        ]
+    else:
+        # General summary prompts (original)
+        prompt_templates = {
+            "comprehensive": """
+                Based on the following relevant context from the document, provide a comprehensive summary. 
+                Include all main points, key findings, important details, and conclusions found in the context.
+                Make it detailed but well-organized:
+                
+                Context: {context}
+                
+                Comprehensive Summary:
+            """,
             
-            Context: {context}
+            "brief": """
+                Based on the following relevant context from the document, provide a brief summary. 
+                Focus only on the most important points and key takeaways in 2-3 paragraphs:
+                
+                Context: {context}
+                
+                Brief Summary:
+            """,
             
-            Brief Summary:
-        """,
+            "bullet_points": """
+                Based on the following relevant context from the document, create a bullet point summary. 
+                Extract the main ideas and present them as clear, concise bullet points:
+                
+                Context: {context}
+                
+                Key Points:
+            """,
+            
+            "executive": """
+                Based on the following relevant context from the document, provide an executive summary. 
+                Focus on key insights, main conclusions, and actionable information relevant for decision-making:
+                
+                Context: {context}
+                
+                Executive Summary:
+            """
+        }
         
-        "bullet_points": """
-            Based on the following relevant context from the document, create a bullet point summary. 
-            Extract the main ideas and present them as clear, concise bullet points:
-            
-            Context: {context}
-            
-            Key Points:
-        """,
-        
-        "executive": """
-            Based on the following relevant context from the document, provide an executive summary. 
-            Focus on key insights, main conclusions, and actionable information relevant for decision-making:
-            
-            Context: {context}
-            
-            Executive Summary:
-        """
-    }
+        # General summary queries
+        summary_queries = [
+            "main topics and key points",
+            "important findings and conclusions", 
+            "significant details and insights",
+            "recommendations and actionable items"
+        ]
     
     model = ChatOpenAI(model="gpt-4o", temperature=0.3)
     prompt = PromptTemplate(template=prompt_templates[summary_type], input_variables=["context"])
     
-    # Generate summary queries to retrieve relevant chunks
-    summary_queries = [
-        "main topics and key points",
-        "important findings and conclusions", 
-        "significant details and insights",
-        "recommendations and actionable items"
-    ]
-    
     # Retrieve relevant chunks using similarity search
-    st.info("🔍 Retrieving relevant content...")
+    if specific_topic:
+        st.info(f" Searching for content related to: '{specific_topic}'...")
+    else:
+        st.info("🔍 Retrieving relevant content...")
+    
     all_relevant_docs = []
     for query in summary_queries:
-        docs = vector_store.similarity_search(query, k=3)  # Get top 3 most relevant chunks per query
+        docs = vector_store.similarity_search(query, k=4)
         all_relevant_docs.extend(docs)
     
     # Remove duplicates while preserving order
@@ -111,10 +168,14 @@ def summarize_with_rag(text_chunks, summary_type="comprehensive"):
             unique_docs.append(doc)
     
     # Combine relevant context
-    context = "\n\n".join([doc.page_content for doc in unique_docs[:10]])  # Limit to top 10 unique chunks
+    context = "\n\n".join([doc.page_content for doc in unique_docs[:12]])  # Limit to top 12 unique chunks
     
     # Generate summary using RAG
-    st.info(f"🤖 Generating {summary_type} summary with RAG...")
+    if specific_topic:
+        st.info(f" Generating {summary_type} summary about '{specific_topic}' with RAG...")
+    else:
+        st.info(f" Generating {summary_type} summary with RAG...")
+    
     formatted_prompt = prompt.format(context=context)
     response = model.invoke(formatted_prompt)
     
@@ -122,12 +183,12 @@ def summarize_with_rag(text_chunks, summary_type="comprehensive"):
 
 
 def main():
-    st.set_page_config(page_title="PDF RAG Summarizer", page_icon="📄")
-    st.header("PDF RAG Summarizer using GPT 📄")
+    st.set_page_config(page_title="PDF RAG Summarizer", page_icon="")
+    st.header("PDF RAG Summarizer using GPT")
     st.subheader("Upload PDFs and get intelligent summaries using Retrieval-Augmented Generation")
 
     with st.sidebar:
-        st.title("📋 RAG Options")
+        st.title(" RAG Options")
         
         # File uploader
         pdf_docs = st.file_uploader(
@@ -144,9 +205,35 @@ def main():
             help="Select the type of summary you want"
         )
         
+        # RAG parameters
+        st.markdown("nRAG Parameters")
+        chunk_size = st.slider("Chunk Size", 500, 2000, 1000, 100, 
+                              help="Size of text chunks for embedding")
+        chunk_overlap = st.slider("Chunk Overlap", 50, 400, 200, 50,
+                                 help="Overlap between chunks")
+        
         # Summary button
         summarize_button = st.button(" Generate RAG Summary", type="primary")
             
+        # Instructions
+       
+
+    # Topic-specific summary input in main area
+    st.markdown(" Topic-Specific Summary (Optional)")
+    specific_topic = st.text_area(
+        "Enter a specific topic, question, or theme you'd like to focus on:",
+        help="The RAG system will search for content specifically related to your topic and generate a focused summary",
+        height=120,
+        key="topic_input"
+    )
+    
+    # Show topic indicator
+    if specific_topic.strip():
+        st.success(f" Focus Topic:** {specific_topic.strip()}")
+        st.info(" The system will search for content specifically related to this topic")
+    else:
+        st.info(" General Summary Mode: Will summarize the entire document")
+    
 
     # Main content area for summary mode
     if pdf_docs and summarize_button:
@@ -168,20 +255,24 @@ def main():
                 st.info(" Creating text chunks for RAG...")
                 # Update chunk size based on sidebar settings
                 text_splitter = RecursiveCharacterTextSplitter(
-                    chunk_size= 1000, 
-                    chunk_overlap=200
+                    chunk_size=chunk_size, 
+                    chunk_overlap=chunk_overlap
                 )
                 text_chunks = text_splitter.split_text(raw_text)
                 st.info(f" Created {len(text_chunks)} text chunks for RAG processing")
                 
                 # Generate RAG-based summary
-                summary, relevant_chunks_count = summarize_with_rag(text_chunks, summary_type)
+                topic_to_use = specific_topic.strip() if specific_topic.strip() else None
+                summary, relevant_chunks_count = summarize_with_rag(text_chunks, summary_type, topic_to_use)
                 
                 # Display results
                 st.success(" RAG Summary completed!")
                 
                 # Summary results with RAG info
-                st.markdown(" RAG Summary Results")
+                if topic_to_use:
+                    st.markdown(f"RAG Topic Summary: '{topic_to_use}'")
+                else:
+                    st.markdown(" RAG General Summary Results")
                 
                 # RAG Statistics
                 col1, col2, col3 = st.columns(3)
@@ -193,8 +284,12 @@ def main():
                     st.metric(" Retrieval Efficiency", f"{(relevant_chunks_count/len(text_chunks)*100):.1f}%")
                 
                 # Create expandable sections for better organization
-                with st.expander(" Generated RAG Summary", expanded=True):
-                    st.markdown(summary)
+                if topic_to_use:
+                    with st.expander(f" Generated Topic Summary: '{topic_to_use}'", expanded=True):
+                        st.markdown(summary)
+                else:
+                    with st.expander(" Generated RAG Summary", expanded=True):
+                        st.markdown(summary)
                 
                 # Download option
                 summary_with_metadata = f"""RAG SUMMARY REPORT
@@ -205,29 +300,36 @@ Total Words: {word_count:,}
 Total Chunks: {len(text_chunks)}
 Relevant Chunks Used: {relevant_chunks_count}
 Summary Type: {summary_type.title()}
+Specific Topic: {topic_to_use if topic_to_use else 'General Summary'}
+Chunk Size: {chunk_size}
+Chunk Overlap: {chunk_overlap}
 
 === SUMMARY ===
 {summary}
 """
                 
+                filename_suffix = f"_{topic_to_use.replace(' ', '_')}" if topic_to_use else ""
                 st.download_button(
                     label=" Download RAG Summary Report",
                     data=summary_with_metadata,
-                    file_name=f"rag_summary_{summary_type}.txt",
+                    file_name=f"rag_summary_{summary_type}{filename_suffix}.txt",
                     mime="text/plain"
                 )
                 
                 # Optional: Show chunk analysis
                 with st.expander(" RAG Chunk Analysis"):
-                    st.write(f"**RAG Processing Details:**")
-                    st.write(f"- Original document split into {len(text_chunks)} chunks of 1000 characters each")
-                    st.write(f"- System intelligently retrieved {relevant_chunks_count} most relevant chunks")
-                    st.write(f"- Summary generated using only the most pertinent content ({(relevant_chunks_count/len(text_chunks)*100):.1f}% of total)")
-                    st.write("- This ensures focused, accurate summaries without information overload")
+                    st.write(f" RAG Processing Details:**")
+                    if topic_to_use:
+                        st.write(f" Topic Focus**: '{topic_to_use}'")
+                        st.write(f" Searched specifically for content related to this topic")
+                    st.write(f" Original document split into {len(text_chunks)} chunks of {chunk_size} characters each")
+                    st.write(f" System intelligently retrieved {relevant_chunks_count} most relevant chunks")
+                    st.write(f" Summary generated using only the most pertinent content ({(relevant_chunks_count/len(text_chunks)*100):.1f}% of total)")
+                    if topic_to_use:
+                        st.write(f" Focused retrieval** ensures summary is specifically about '{topic_to_use}'")
+                    else:
+                        st.write(" This ensures focused, accurate summaries without information overload")
                 
-                # Optional: Show original text preview
-                with st.expander(" Preview Original Text (First 1000 characters)"):
-                    st.text(raw_text[:1000] + "..." if len(raw_text) > 1000 else raw_text)
                     
             except Exception as e:
                 st.error(f" An error occurred: {str(e)}")
@@ -238,7 +340,7 @@ Summary Type: {summary_type.title()}
     
     # Footer
     st.markdown("---")
-    st.markdown("*Built with Streamlit, OpenAI GPT-4, FAISS Vector Store & RAG Pipeline*")
+    st.markdown(" Built with Streamlit, OpenAI GPT-4, FAISS Vector Store & RAG Pipeline*")
 
 
 if __name__ == "__main__":
