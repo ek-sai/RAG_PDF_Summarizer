@@ -1,12 +1,12 @@
 import streamlit as st
-from PyPDF2 import PdfReader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 import os
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
-from langchain.vectorstores import FAISS
+from langchain_community.vectorstores import FAISS
 from langchain.prompts import PromptTemplate
 from dotenv import load_dotenv
 import io
+import fitz
 
 load_dotenv()
 os.environ['OPENAI_API_KEY'] = os.getenv("OPENAI_API_KEY", "")
@@ -17,11 +17,9 @@ def get_pdf_text(pdf_docs):
     for uploaded_file in pdf_docs:
         file_bytes = uploaded_file.read()
         pdf_stream = io.BytesIO(file_bytes)
-        pdf_reader = PdfReader(pdf_stream)
-        for page in pdf_reader.pages:
-            page_text = page.extract_text()
-            if page_text:
-                text += page_text
+        doc = fitz.open(stream=pdf_stream, filetype="pdf")
+        for page in doc:
+            text += page.get_text("text")
     return text
 
 
