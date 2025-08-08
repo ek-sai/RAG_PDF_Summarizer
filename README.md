@@ -46,7 +46,7 @@ This **Streamlit application** revolutionizes how you interact with PDF document
 ### 1️⃣ **Clone & Install**
 
 ```bash
-git clone https://github.com/your-username/rag-pdf-summarizer.git
+git clone https://github.com/ek-sai/RAG_PDF_Summarizer.git
 cd rag-pdf-summarizer
 pip install -r requirements.txt
 ```
