@@ -4,4 +4,4 @@ langchain_openai
 langchain_community
 langchain
 dotenv
-fitz
+PyMuPDF
