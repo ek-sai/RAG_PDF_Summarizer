@@ -192,7 +192,7 @@ If this tool saves you time and effort, please:
 - 💬 **Discussions**: Use GitHub Discussions for questions
 - 🐛 **Bug Reports**: Create an issue with reproduction steps  
 - 💡 **Feature Requests**: We'd love to hear your ideas!
-- 📧 **Contact**: [your-email@example.com](mailto:your-email@example.com)
+- 📧 **Contact**: [eksai0726@gmail.com](eksai0726@gmail.com)
 
 ---
 
